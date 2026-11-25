@@ -16,13 +16,19 @@ var session := Session.new(GRID)
 var meshes := {}  # kit piece name -> Mesh, shared by everything that shows it (Flyweight)
 var segments: Array[MeshInstance3D] = []
 var camera := Camera3D.new()
+var score_label := Label.new()
+var food_instance := MeshInstance3D.new()
 var _clock := 0.0
 
 
 func _ready() -> void:
 	meshes = Stage.load_kit()
 	_build_stage()
+	_build_ui()
+	food_instance.mesh = meshes["food"]
+	add_child(food_instance)
 	_draw_dragon()
+	_draw_food()
 
 
 ## Input arrives as events, so even a tap shorter than one frame is never missed.
@@ -38,6 +44,8 @@ func _process(delta: float) -> void:
 		_clock -= TICK_SECONDS
 		session.tick()
 		_draw_dragon()
+		_draw_food()
+		score_label.text = "Score: %d" % session.score
 	_follow(delta)
 
 
@@ -73,5 +81,20 @@ func _draw_dragon() -> void:
 		segment.rotation.y = placed[i][1] * PI / 2
 
 
+func _draw_food() -> void:
+	food_instance.visible = session.food != Vector2i(-1, -1)
+	food_instance.position = _center(session.food)
+
+
 func _center(cell: Vector2i) -> Vector3:
 	return Vector3(cell.x + 0.5, 0, cell.y + 0.5)
+
+
+## Score display
+func _build_ui() -> void:
+	var ui := CanvasLayer.new()
+	add_child(ui)
+	ui.add_child(score_label)
+	score_label.position = Vector2(20, 20)
+	score_label.add_theme_font_size_override("font_size", 28)
+	score_label.text = "Score: %d" % session.score
