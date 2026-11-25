@@ -8,6 +8,8 @@ var board: Board
 var dragon: Dragon
 var food := Vector2i(-1, -1)
 var score := 0
+var started := false
+var game_over := false
 
 var rng := RandomNumberGenerator.new()
 
@@ -36,12 +38,31 @@ func place_food() -> void:
 	food = free_cells[rng.randi_range(0, free_cells.size() - 1)]
 
 
-## Advance the dragon and grow it when it collects energy.
-func tick() -> void:
-	var old_tail: Vector2i = dragon.body.back()
-	dragon.tick()
+func turn(direction: Vector2i) -> void:
+	if game_over:
+		return
+	started = true
+	dragon.turn(direction)
 
-	if dragon.body[0] == food:
+
+## Advance the dragon, check collisions, and collect energy.
+func tick() -> void:
+	if not started or game_over:
+		return
+
+	var old_tail: Vector2i = dragon.body.back()
+	var old_heading := dragon.heading
+	dragon.tick()
+	var head := dragon.body[0]
+
+	if board.is_solid(head) or dragon.body.find(head, 1) != -1:
+		game_over = true
+		dragon.body.pop_front()
+		dragon.body.append(old_tail)
+		dragon.heading = old_heading
+		return
+
+	if head == food:
 		dragon.body.append(old_tail)
 		score += 1
 		place_food()

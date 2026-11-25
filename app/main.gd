@@ -17,6 +17,7 @@ var meshes := {}  # kit piece name -> Mesh, shared by everything that shows it (
 var segments: Array[MeshInstance3D] = []
 var camera := Camera3D.new()
 var score_label := Label.new()
+var status_label := Label.new()
 var food_instance := MeshInstance3D.new()
 var _clock := 0.0
 
@@ -33,19 +34,26 @@ func _ready() -> void:
 
 ## Input arrives as events, so even a tap shorter than one frame is never missed.
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_R:
+			_restart()
+			return
+
 	for action in DIRECTIONS:
 		if event.is_action_pressed(action):
-			session.dragon.turn(DIRECTIONS[action])
+			session.turn(DIRECTIONS[action])
 
 
 func _process(delta: float) -> void:
-	_clock += delta
-	while _clock >= TICK_SECONDS:
-		_clock -= TICK_SECONDS
-		session.tick()
-		_draw_dragon()
-		_draw_food()
-		score_label.text = "Score: %d" % session.score
+	if session.started and not session.game_over:
+		_clock += delta
+		while _clock >= TICK_SECONDS and not session.game_over:
+			_clock -= TICK_SECONDS
+			session.tick()
+			_draw_dragon()
+			_draw_food()
+
+	_update_ui()
 	_follow(delta)
 
 
@@ -90,11 +98,37 @@ func _center(cell: Vector2i) -> Vector3:
 	return Vector3(cell.x + 0.5, 0, cell.y + 0.5)
 
 
-## Score display
+## Game UI
 func _build_ui() -> void:
 	var ui := CanvasLayer.new()
 	add_child(ui)
+
 	ui.add_child(score_label)
 	score_label.position = Vector2(20, 20)
 	score_label.add_theme_font_size_override("font_size", 28)
+
+	ui.add_child(status_label)
+	status_label.position = Vector2(20, 60)
+	status_label.add_theme_font_size_override("font_size", 24)
+
+	_update_ui()
+
+
+func _update_ui() -> void:
 	score_label.text = "Score: %d" % session.score
+
+	if session.game_over:
+		status_label.text = "Game Over\nFinal Score: %d\nPress R to restart" % session.score
+	elif not session.started:
+		status_label.text = "Press an arrow key to start"
+	else:
+		status_label.text = ""
+
+
+func _restart() -> void:
+	session = Session.new(GRID)
+	_clock = 0.0
+	camera.position = _center(session.dragon.body[0]) + CAMERA_OFFSET
+	_draw_dragon()
+	_draw_food()
+	_update_ui()
