@@ -45,10 +45,8 @@ ART = Path(__file__).resolve().parent.parent / "art"
 GLB = ART / "dragon_kit.glb"
 BLEND = ART / "dragon_kit.blend"
 
-VOXELS = 4  # voxels per cell edge
-
 MATERIALS = []  # every material, in order; a face's material_index points into this list
-PALETTE = {}  # voxel character -> index in MATERIALS; filled in by make_materials()
+PALETTE = {}  # finish name -> index in MATERIALS; filled in by make_materials()
 
 
 def reset_scene():
@@ -87,92 +85,82 @@ def srgb(hex_code):
 
 
 def make_materials():
-    """One material per voxel character. Runs after reset_scene(), which would erase them."""
     PALETTE.update({
-        "#": pbr_material("Scales", "#2f9e5b", metallic=0.2, roughness=0.45),
-        "*": pbr_material("Gold", "#f2bf3a", metallic=1.0, roughness=0.3),
-        "e": pbr_material("Eye", "#ffb22e", emission="#ffa21a", strength=4.0),
-        "o": pbr_material("Ember", "#ff6a1a", emission="#ff4a08", strength=3.0),
-        "f": pbr_material("Food", "#53b7ff", roughness=0.15, emission="#53b7ff", strength=2.5),
-        "s": pbr_material("Stone", "#9e9883", roughness=0.85),
-        "t": pbr_material("Moss", "#6f8558", roughness=0.9),
-        "w": pbr_material("Brick", "#6b4d3d", roughness=0.9),
+        "chassis": pbr_material("Graphite", "#263341", metallic=0.65, roughness=0.44),
+        "armor": pbr_material("Copper armor", "#e68a42", metallic=0.55, roughness=0.30),
+        "steel": pbr_material("Steel", "#819cab", metallic=0.65, roughness=0.38),
+        "sensor": pbr_material("Optic", "#8effed", emission="#44ffe4", strength=1.5),
+        "food": pbr_material("Food", "#53b7ff", roughness=0.15, emission="#53b7ff", strength=2.5),
+        "deck": pbr_material("Deck", "#354251", metallic=0.25, roughness=0.65),
     })
 
 
-# --- Builders: each adds one piece's geometry to a bmesh ------------------------------
-# bmesh builds meshes from data alone, with no edit mode or selection involved; Blender
-# calls it the best way to create and edit faces:
-# https://docs.blender.org/api/current/info_gotchas_meshes.html
+def finish(verts, surface):
+    for face in {face for vertex in verts for face in vertex.link_faces}:
+        face.material_index = PALETTE[surface]
 
 
-def voxels(bm, layers, below_ground=0):
-    """Add one cube per palette character. Each layer is a top-down view of the cell,
-    from the ground up: the top row is the front (+Y), the bottom row is the back."""
-    for z, layer in enumerate(layers):
-        for row, line in enumerate(layer.split()):
-            for column, char in enumerate(line):
-                if char not in PALETTE:
-                    continue
-                center = (
-                    (column + 0.5) / VOXELS - 0.5,
-                    0.5 - (row + 0.5) / VOXELS,
-                    (z - below_ground + 0.5) / VOXELS,
-                )
-                cube = bmesh.ops.create_cube(bm, size=1 / VOXELS, matrix=Matrix.Translation(center))
-                for face in {f for v in cube["verts"] for f in v.link_faces}:
-                    face.material_index = PALETTE[char]
+def box(bm, center, size, surface):
+    transform = Matrix.Translation(center) @ Matrix.Diagonal((*size, 1))
+    verts = bmesh.ops.create_cube(bm, size=1, matrix=transform)["verts"]
+    finish(verts, surface)
+
+
+def plate(bm, outline, bottom, top, surface):
+    """Extrude a counterclockwise XY outline."""
+    lower = [bm.verts.new((x, y, bottom)) for x, y in outline]
+    upper = [bm.verts.new((x, y, top)) for x, y in outline]
+    faces = [bm.faces.new(lower[::-1]), bm.faces.new(upper)]
+    for i in range(len(lower)):
+        faces.append(bm.faces.new((lower[i-1], lower[i], upper[i], upper[i-1])))
+    for face in faces:
+        face.material_index = PALETTE[surface]
+
+
+def socket(bm, dx, dy):
+    """Extend a graphite coupling to the center of a cell edge."""
+    box(bm, (0.25 * dx, 0.25 * dy, 0.20),
+        (0.50 if dx else 0.24, 0.50 if dy else 0.24, 0.18), "chassis")
+    box(bm, (0.38 * dx, 0.38 * dy, 0.20),
+        (0.09 if dx else 0.32, 0.09 if dy else 0.32, 0.22), "steel")
 
 
 def build_head(bm):
-    voxels(bm, ["""
-        .##.
-        ####
-        ####
-        .##.
-        """, """
-        ....
-        e##e
-        .##.
-        .##.
-        """, """
-        ....
-        ....
-        *..*
-        ....
-        """])
+    socket(bm, 0, -1)
+    outline = [(-0.27,-0.32), (0.27,-0.32), (0.37,-0.12), (0.28,0.28),
+               (0.14,0.46), (-0.14,0.46), (-0.28,0.28), (-0.37,-0.12)]
+    plate(bm, outline, 0.10, 0.27, "chassis")
+    plate(bm, [(0.96*x, 0.96*y) for x,y in outline], 0.27, 0.37, "armor")
+    box(bm, (0, 0.16, 0.39), (0.46, 0.14, 0.04), "chassis")
+    for x in (-0.14, 0.14):
+        box(bm, (x, 0.16, 0.42), (0.09, 0.075, 0.02), "sensor")
+
+
+def servo(bm):
+    hub = bmesh.ops.create_cone(bm, cap_ends=True, segments=8, radius1=0.29,
+                                radius2=0.25, depth=0.24, matrix=Matrix.Translation((0, 0, 0.22)))
+    finish(hub["verts"], "armor")
+    box(bm, (0, 0, 0.36), (0.23, 0.18, 0.04), "steel")
 
 
 def build_straight(bm):
-    voxels(bm, ["""
-        .##.
-        .##.
-        .##.
-        .##.
-        """, """
-        ....
-        .*..
-        ....
-        .*..
-        """])
+    socket(bm, 0, -1)
+    socket(bm, 0, 1)
+    servo(bm)
 
 
 def build_turn(bm):
-    voxels(bm, ["""
-        ....
-        .###
-        .###
-        .##.
-        """])
+    socket(bm, 0, -1)
+    socket(bm, 1, 0)
+    servo(bm)
 
 
 def build_tail(bm):
-    voxels(bm, ["""
-        .##.
-        .##.
-        ..#.
-        ..o.
-        """])
+    socket(bm, 0, 1)
+    plate(bm, [(-0.045,-0.43), (0.045,-0.43), (0.21,-0.04), (0.19,0.26),
+               (-0.19,0.26), (-0.21,-0.04)], 0.12, 0.30, "armor")
+    box(bm, (0, 0, 0.32), (0.09, 0.26, 0.04), "chassis")
+
 
 def build_food(bm):
     food = bmesh.ops.create_uvsphere(
@@ -182,26 +170,22 @@ def build_food(bm):
         radius=0.22,
         matrix=Matrix.Translation((0, 0, 0.22)),
     )
-    for face in {f for v in food["verts"] for f in v.link_faces}:
-        face.material_index = PALETTE["f"]
+    finish(food["verts"], "food")
 
 
 def build_floor(bm):
-    voxels(bm, ["""
-        ssst
-        stss
-        ssss
-        tsss
-        """], below_ground=1)
+    box(bm, (0, 0, -0.10), (1, 1, 0.12), "chassis")
+    plate(bm, [(-0.41,-0.48), (0.41,-0.48), (0.48,-0.41), (0.48,0.41),
+               (0.41,0.48), (-0.41,0.48), (-0.48,0.41), (-0.48,-0.41)],
+          -0.04, 0, "deck")
 
 
 def build_wall(bm):
-    voxels(bm, ["""
-        wwww
-        wwww
-        wwww
-        wwww
-        """] * 3)
+    build_floor(bm)
+    box(bm, (0, 0, 0.18), (0.95, 0.95, 0.36), "chassis")
+    box(bm, (0, 0, 0.39), (0.85, 0.85, 0.06), "steel")
+    for x in (-0.25, 0.25):
+        box(bm, (x, 0, 0.43), (0.12, 0.77, 0.02), "armor")
 
 
 PIECES = {  # the dragon kit; the game finds each mesh by these names

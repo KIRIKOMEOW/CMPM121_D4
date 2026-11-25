@@ -5,8 +5,8 @@ to learn where your project is headed. Replace each _italic prompt_.
 
 ## Target
 
-_One or two sentences: what is this creature, what does it eat, where does it live,
-and what should playing feel like?_
+A copper-plated mechanical snake collects blue energy cells on a steel maintenance deck.
+Each pickup adds another joint to steer around walls and the snake's own body.
 
 ## Menu choices
 
@@ -64,4 +64,4 @@ versions we run (Godot 4.7, Blender 5.2). Add a row when a decision depends on o
 
 | Claim | Source (link) | How we checked it |
 | --- | --- | --- |
-| _what the tool does_ | _manual page or source file_ | _what we ran or looked at_ |
+| A solid Principled BSDF base color carries into the glTF material. | [Blender 5.2 glTF exporter, Base Color](https://docs.blender.org/manual/en/5.2/addons/scene_gltf2.html#base-color) | Rebuilt the kit and checked the copper armor on the head and body joints in the Godot kit viewer. |
